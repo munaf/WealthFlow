@@ -1,12 +1,10 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# WealthFlow
 
-# Run and deploy your AI Studio app
+WealthFlow is a vibe coded client-side SaaS app for financial scenario modeling. Input all of your income streams, assets, debts, expenses, as well as retirement parameters and it will help you understand your lifetime financial burndown. 
 
-This contains everything you need to run your app locally.
+## Limitations
 
-View your app in AI Studio: https://ai.studio/apps/c691fd21-f617-44a8-afa4-b2102e292e29
+There is no database and the app does not use localStorage to save your scenarios (yet). If you want to save your configuration, you must export it as a CSV and later re-import it for future modifications. 
 
 ## Run Locally
 
