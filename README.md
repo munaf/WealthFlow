@@ -4,7 +4,7 @@ WealthFlow is a vibe coded client-side SaaS app for financial scenario modeling.
 
 ## Limitations
 
-There is no database and the app does not use localStorage to save your scenarios (yet). If you want to save your configuration, you must export it as a CSV and later re-import it for future modifications. 
+There is no database and the app does not use `localStorage` to save your scenarios (yet). If you want to save your configuration, you must export it as a CSV and later re-import it for future modifications. 
 
 ## Run Locally
 
