@@ -139,7 +139,8 @@ export default function App() {
     assets: true,
     debts: false,
     income: true,
-    expenses: true
+    expenses: true,
+    one_time_expenses: true
   });
 
   const toggleSection = (id: string) => {
@@ -249,7 +250,7 @@ export default function App() {
     try {
       const header = [
         'Title', 'Type', 'AssetType', 'Value', 'Frequency', 'GrowthRate', 
-        'StartAge', 'EndAge', 'IsLiquid', 'SurplusAssetId',
+        'StartAge', 'EndAge', 'IsLiquid', 'SurplusAssetId', 'IsTodayDollars',
         'ProfileAge', 'ProfileRetire', 'ProfileLife', 'ProfileInitialNW', 'ResidenceState', 'Inflation'
       ];
       
@@ -264,6 +265,7 @@ export default function App() {
         item.endAge,
         item.isLiquid ? 'true' : 'false',
         item.surplusAssetId || '',
+        item.isTodayDollars !== undefined ? (item.isTodayDollars ? 'true' : 'false') : '',
         profile.currentAge,
         profile.retirementAge,
         profile.lifeExpectancy,
@@ -318,22 +320,38 @@ export default function App() {
 
           const [
             title, type, assetType, value, frequency, growthRate, 
-            startAge, endAge, isLiquid, surplusAssetId,
+            startAge, endAge, isLiquid, surplusAssetId, isTodayDollars,
             pAge, pRetire, pLife, pNW, pStateOrInflation, pInflationIfState
           ] = cleaned;
 
           if (idx === 0) {
-            // Check if it's the new format (16 cols) or old (15 cols)
-            const isNewFormat = cleaned.length >= 16;
+            // Newest format: 17 cols (added IsTodayDollars)
+            // Mid format: 16 cols (added ResidenceState)
+            // Old format: 15 cols 
+            const hasTodayDollarsField = cleaned.length >= 17;
+            const hasStateField = cleaned.length >= 16;
             
             newProfile = {
-              currentAge: parseInt(pAge) || profile.currentAge,
-              retirementAge: parseInt(pRetire) || profile.retirementAge,
-              lifeExpectancy: parseInt(pLife) || profile.lifeExpectancy,
-              initialNetWorth: parseFloat(pNW) || profile.initialNetWorth,
-              residenceState: isNewFormat ? pStateOrInflation : 'CA'
+              currentAge: parseInt(hasTodayDollarsField ? pAge : (hasStateField ? pAge : pAge)) || profile.currentAge, // This logic is slightly messy because of shifting indexes
+              retirementAge: 0, // We'll re-extract properly below
+              lifeExpectancy: 0,
+              initialNetWorth: 0,
+              residenceState: 'CA'
             };
-            newInflation = isNewFormat ? (parseFloat(pInflationIfState) || inflationRate) : (parseFloat(pStateOrInflation) || inflationRate);
+
+            // Let's re-map based on count to be safer
+            let profileBaseIdx = 10; // Old format
+            if (cleaned.length >= 17) profileBaseIdx = 11;
+            else if (cleaned.length >= 16) profileBaseIdx = 10;
+            
+            newProfile = {
+              currentAge: parseInt(cleaned[profileBaseIdx]) || profile.currentAge,
+              retirementAge: parseInt(cleaned[profileBaseIdx + 1]) || profile.retirementAge,
+              lifeExpectancy: parseInt(cleaned[profileBaseIdx + 2]) || profile.lifeExpectancy,
+              initialNetWorth: parseFloat(cleaned[profileBaseIdx + 3]) || profile.initialNetWorth,
+              residenceState: cleaned.length >= 16 ? cleaned[profileBaseIdx + 4] : 'CA'
+            };
+            newInflation = parseFloat(cleaned[cleaned.length - 1]) || inflationRate;
           }
 
           newItems.push({
@@ -347,7 +365,8 @@ export default function App() {
             startAge: parseInt(startAge) || profile.currentAge,
             endAge: parseInt(endAge) || profile.lifeExpectancy,
             isLiquid: isLiquid === 'true',
-            surplusAssetId: surplusAssetId || undefined
+            surplusAssetId: surplusAssetId || undefined,
+            isTodayDollars: isTodayDollars === 'true' || (type === FinancialItemType.ONE_TIME_EXPENSE && isTodayDollars !== 'false')
           });
         });
 
@@ -456,17 +475,20 @@ export default function App() {
 
   const addItem = (type: FinancialItemType) => {
     const isFlow = type === FinancialItemType.INCOME || type === FinancialItemType.EXPENSE;
+    const isOneTime = type === FinancialItemType.ONE_TIME_EXPENSE;
+    
     const newItem: FinancialItem = {
       id: generateId(),
-      title: 'New ' + (type === FinancialItemType.ASSET ? 'Asset' : type),
+      title: 'New ' + (type === FinancialItemType.ASSET ? 'Asset' : (type === FinancialItemType.ONE_TIME_EXPENSE ? 'Expense' : type)),
       type,
       assetType: type === FinancialItemType.ASSET ? AssetType.BROKERAGE : undefined,
-      value: type === FinancialItemType.ASSET ? 10000 : (type === FinancialItemType.EXPENSE ? 2000 : 5000),
+      value: type === FinancialItemType.ASSET ? 10000 : (isFlow || isOneTime ? 2000 : 5000),
       frequency: isFlow ? Frequency.MONTHLY : undefined,
-      growthRate: type === FinancialItemType.ASSET ? 0.07 : 0.02,
-      startAge: profile.currentAge,
-      endAge: (type === FinancialItemType.ASSET || type === FinancialItemType.EXPENSE) ? profile.lifeExpectancy : profile.retirementAge,
+      growthRate: type === FinancialItemType.ASSET ? 0.07 : (type === FinancialItemType.EXPENSE ? 0.03 : 0),
+      startAge: type === FinancialItemType.ONE_TIME_EXPENSE ? profile.currentAge + 5 : profile.currentAge,
+      endAge: type === FinancialItemType.ONE_TIME_EXPENSE ? profile.currentAge + 5 : ((type === FinancialItemType.ASSET || type === FinancialItemType.EXPENSE) ? profile.lifeExpectancy : profile.retirementAge),
       isLiquid: type === FinancialItemType.ASSET,
+      isTodayDollars: isOneTime ? true : undefined,
     };
     setItems([...items, newItem]);
   };
@@ -653,7 +675,8 @@ export default function App() {
               { id: 'assets', title: 'Assets', type: FinancialItemType.ASSET, icon: Wallet },
               { id: 'debts', title: 'Debts', type: FinancialItemType.LIABILITY, icon: TrendingDown },
               { id: 'income', title: 'Income', type: FinancialItemType.INCOME, icon: TrendingUp },
-              { id: 'expenses', title: 'Expenses', type: FinancialItemType.EXPENSE, icon: PieChart },
+              { id: 'expenses', title: 'Recurring Expenses', type: FinancialItemType.EXPENSE, icon: PieChart },
+              { id: 'one_time_expenses', title: 'One-time Expenses', type: FinancialItemType.ONE_TIME_EXPENSE, icon: Calendar },
             ].map(section => (
               <SidebarSection
                 key={section.id}
@@ -685,7 +708,7 @@ export default function App() {
                             <div className={cn(
                               "w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]",
                               item.type === FinancialItemType.INCOME ? "text-emerald-600 bg-emerald-600" : 
-                              item.type === FinancialItemType.EXPENSE ? "text-red-600 bg-red-600" : 
+                              (item.type === FinancialItemType.EXPENSE || item.type === FinancialItemType.ONE_TIME_EXPENSE) ? "text-red-600 bg-red-600" : 
                               item.type === FinancialItemType.ASSET ? "text-blue-600 bg-blue-600" : "text-amber-600 bg-amber-600"
                             )} />
                             <input 
@@ -728,7 +751,7 @@ export default function App() {
                             <TooltipLabel isDarkMode={isDarkMode} tooltip={item.type === FinancialItemType.ASSET || item.type === FinancialItemType.LIABILITY ? 'The current balance of this account.' : 'The cash value associated with this transaction.'}>
                                {item.type === FinancialItemType.ASSET || item.type === FinancialItemType.LIABILITY 
                                  ? 'Balance' 
-                                 : item.frequency === Frequency.MONTHLY ? 'Monthly Value' : (item.type === FinancialItemType.INCOME ? 'Gross Annual Salary' : 'Annual Value')}
+                                 : item.type === FinancialItemType.ONE_TIME_EXPENSE ? 'Expense Amount' : (item.frequency === Frequency.MONTHLY ? 'Monthly Value' : (item.type === FinancialItemType.INCOME ? 'Gross Annual Salary' : 'Annual Value'))}
                             </TooltipLabel>
                             {item.type === FinancialItemType.INCOME && (
                               <p className="text-[8px] text-gray-500 mb-1 leading-tight italic">
@@ -749,11 +772,17 @@ export default function App() {
                             </div>
                           </div>
                           <div>
-                            <TooltipLabel isDarkMode={isDarkMode} tooltip="The expected annual rate of return for this account or interest rate for this debt.">
-                              {item.frequency ? 'Period' : (
-                                item.type === FinancialItemType.ASSET ? 'Growth (Annual)' : 'APY (Annual)'
-                              )}
-                            </TooltipLabel>
+                            {item.type === FinancialItemType.ONE_TIME_EXPENSE ? (
+                              <TooltipLabel isDarkMode={isDarkMode} tooltip="If 'Yes', the amount is entered in today's dollars and will be inflated to its future value at the time of the expense. If 'No', the amount is considered the exact target value.">
+                                Adjust for Inflation?
+                              </TooltipLabel>
+                            ) : (
+                              <TooltipLabel isDarkMode={isDarkMode} tooltip="The expected annual rate of return for this account or interest rate for this debt.">
+                                {item.frequency ? 'Period' : (
+                                  item.type === FinancialItemType.ASSET ? 'Growth (Annual)' : 'APY (Annual)'
+                                )}
+                              </TooltipLabel>
+                            )}
                             {item.frequency ? (
                               <div className={cn(
                                 "flex border rounded-lg p-0.5 h-[34px] shadow-sm transition-colors",
@@ -780,6 +809,36 @@ export default function App() {
                                   )}
                                 >
                                   Ann
+                                </button>
+                              </div>
+                            ) : item.type === FinancialItemType.ONE_TIME_EXPENSE ? (
+                              <div className={cn(
+                                "flex border rounded-lg p-0.5 h-[34px] shadow-sm transition-colors",
+                                isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+                              )}>
+                                <button 
+                                  onClick={() => updateItem(item.id, { isTodayDollars: true })}
+                                  className={cn(
+                                    "flex-1 text-[8px] uppercase font-bold rounded-md transition-all cursor-pointer",
+                                    item.isTodayDollars 
+                                      ? (isDarkMode ? "bg-white/10 text-white shadow-inner" : "bg-gray-100 text-gray-900 shadow-inner") 
+                                      : "text-gray-400 hover:text-gray-600"
+                                  )}
+                                  title="Factor in future inflation."
+                                >
+                                  Yes
+                                </button>
+                                <button 
+                                  onClick={() => updateItem(item.id, { isTodayDollars: false })}
+                                  className={cn(
+                                    "flex-1 text-[8px] uppercase font-bold rounded-md transition-all cursor-pointer",
+                                    !item.isTodayDollars 
+                                      ? (isDarkMode ? "bg-white/10 text-white shadow-inner" : "bg-gray-100 text-gray-900 shadow-inner") 
+                                      : "text-gray-400 hover:text-gray-600"
+                                  )}
+                                  title="Amount is already inflated."
+                                >
+                                  No
                                 </button>
                               </div>
                             ) : (
@@ -823,29 +882,40 @@ export default function App() {
 
                         <div className="grid grid-cols-2 gap-4 mt-3">
                           <div>
-                            <TooltipLabel isDarkMode={isDarkMode} tooltip="The age when this financial item starts affecting your model.">Start Age</TooltipLabel>
+                            <TooltipLabel isDarkMode={isDarkMode} tooltip={item.type === FinancialItemType.ONE_TIME_EXPENSE ? "The age when this expense occurs." : "The age when this financial item starts affecting your model."}>
+                              {item.type === FinancialItemType.ONE_TIME_EXPENSE ? "Occurrence Age" : "Start Age"}
+                            </TooltipLabel>
                             <input 
                               type="number"
                               value={item.startAge}
-                              onChange={e => updateItem(item.id, { startAge: parseInt(e.target.value) || 0 })}
+                              onChange={e => {
+                                const age = parseInt(e.target.value) || 0;
+                                if (item.type === FinancialItemType.ONE_TIME_EXPENSE) {
+                                  updateItem(item.id, { startAge: age, endAge: age });
+                                } else {
+                                  updateItem(item.id, { startAge: age });
+                                }
+                              }}
                               className={cn(
                                 "w-full border rounded-lg px-2 py-1 text-xs outline-none font-mono shadow-sm transition-colors",
                                 isDarkMode ? "bg-gray-800 border-gray-700 text-white focus:border-emerald-500" : "bg-white border-gray-200 text-gray-900 focus:border-emerald-500"
                               )}
                             />
                           </div>
-                          <div>
-                            <TooltipLabel isDarkMode={isDarkMode} tooltip="The age when this financial item ends (e.g. retirement age for salary, life expectancy for expenses).">End Age</TooltipLabel>
-                            <input 
-                              type="number"
-                              value={item.endAge}
-                              onChange={e => updateItem(item.id, { endAge: parseInt(e.target.value) || 0 })}
-                              className={cn(
-                                "w-full border rounded-lg px-2 py-1 text-xs outline-none font-mono shadow-sm transition-colors",
-                                isDarkMode ? "bg-gray-800 border-gray-700 text-white focus:border-emerald-500" : "bg-white border-gray-200 text-gray-900 focus:border-emerald-500"
-                              )}
-                            />
-                          </div>
+                          {item.type !== FinancialItemType.ONE_TIME_EXPENSE && (
+                            <div>
+                              <TooltipLabel isDarkMode={isDarkMode} tooltip="The age when this financial item ends (e.g. retirement age for salary, life expectancy for expenses).">End Age</TooltipLabel>
+                              <input 
+                                type="number"
+                                value={item.endAge}
+                                onChange={e => updateItem(item.id, { endAge: parseInt(e.target.value) || 0 })}
+                                className={cn(
+                                  "w-full border rounded-lg px-2 py-1 text-xs outline-none font-mono shadow-sm transition-colors",
+                                  isDarkMode ? "bg-gray-800 border-gray-700 text-white focus:border-emerald-500" : "bg-white border-gray-200 text-gray-900 focus:border-emerald-500"
+                                )}
+                              />
+                            </div>
+                          )}
                         </div>
 
                         {item.type === FinancialItemType.INCOME && (

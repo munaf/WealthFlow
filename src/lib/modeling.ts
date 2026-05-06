@@ -151,16 +151,26 @@ export const runSimulation = (
     items.forEach((item) => {
       if (age >= item.startAge && age <= item.endAge) {
         const yearsPassed = age - startAge;
-        const effectiveGrowth = item.type === FinancialItemType.EXPENSE 
-          ? (inflationRate + item.growthRate) 
-          : item.growthRate;
-          
         const baseValue = item.frequency === Frequency.MONTHLY ? item.value * 12 : item.value;
-        const scaledValue = baseValue * Math.pow(1 + effectiveGrowth, yearsPassed);
+        let scaledValue = 0;
+
+        if (item.type === FinancialItemType.ONE_TIME_EXPENSE) {
+          // If it's today's dollars, we inflate it by the number of years until it happens
+          if (item.isTodayDollars) {
+            scaledValue = baseValue * Math.pow(1 + inflationRate, yearsPassed);
+          } else {
+            scaledValue = baseValue;
+          }
+        } else {
+          const effectiveGrowth = item.type === FinancialItemType.EXPENSE 
+            ? (inflationRate + item.growthRate) 
+            : item.growthRate;
+          scaledValue = baseValue * Math.pow(1 + effectiveGrowth, yearsPassed);
+        }
 
         if (item.type === FinancialItemType.INCOME) {
           grossIncome += scaledValue;
-        } else if (item.type === FinancialItemType.EXPENSE) {
+        } else if (item.type === FinancialItemType.EXPENSE || item.type === FinancialItemType.ONE_TIME_EXPENSE) {
           yearExpenses += scaledValue;
         }
       }

@@ -8,6 +8,7 @@ export enum FinancialItemType {
   LIABILITY = 'liability',
   INCOME = 'income',
   EXPENSE = 'expense',
+  ONE_TIME_EXPENSE = 'one_time_expense',
 }
 
 export enum AssetType {
@@ -34,6 +35,7 @@ export interface FinancialItem {
   startAge: number;
   endAge: number;
   isLiquid?: boolean;
+  isTodayDollars?: boolean; // New flag for one-time expenses
   taxRate?: number; // Custom override for tax (e.g. cap gains for brokerage)
   surplusAssetId?: string; // Where unspent income from this source flows
 }
